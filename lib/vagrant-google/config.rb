@@ -17,16 +17,6 @@ require "securerandom"
 module VagrantPlugins
   module Google
     class Config < Vagrant.plugin("2", :config) # rubocop:disable Metrics/ClassLength
-      # The Service Account Client ID Email address
-      #
-      # @return [String]
-      attr_accessor :google_client_email
-
-      # The path to the Service Account private key
-      #
-      # @return [String]
-      attr_accessor :google_key_location
-
       # The path to the Service Account json-formatted private key
       #
       # @return [String]
@@ -46,6 +36,11 @@ module VagrantPlugins
       #
       # @return [String]
       attr_accessor :image_family
+
+      # The name of the image_project_id
+      #
+      # @return [String]
+      attr_accessor :image_project_id
 
       # The instance group name to put the instance in.
       #
@@ -87,6 +82,11 @@ module VagrantPlugins
       # @return [String]
       attr_accessor :network
 
+      # The name of the network_project_id
+      #
+      # @return [String]
+      attr_accessor :network_project_id
+
       # The name of the subnetwork
       #
       # @return [String]
@@ -97,6 +97,11 @@ module VagrantPlugins
       # @return [Array]
       attr_accessor :tags
 
+      # Labels to apply to the instance
+      #
+      # @return [Hash<String, String>]
+      attr_accessor :labels
+
       # whether to enable ip forwarding
       #
       # @return Boolean
@@ -106,6 +111,11 @@ module VagrantPlugins
       #
       # @return String
       attr_accessor :external_ip
+
+      # The network IP Address to use
+      #
+      # @return String
+      attr_accessor :network_ip
 
       # Use private ip address
       #
@@ -142,26 +152,48 @@ module VagrantPlugins
       # @return [Int]
       attr_accessor :instance_ready_timeout
 
-      # The zone to launch the instance into. If nil, it will
-      # use the default us-central1-f.
+      # The zone to launch the instance into.
+      # If nil and the "default" network is set use the default us-central1-f.
       #
       # @return [String]
       attr_accessor :zone
 
-      # The list of access controls for service accounts.
+      # The list of access scopes for instance.
+      #
+      # @return [Array]
+      attr_accessor :scopes
+
+      # Deprecated: the list of access scopes for instance.
       #
       # @return [Array]
       attr_accessor :service_accounts
-      alias scopes service_accounts
-      alias scopes= service_accounts=
+
+      # IAM service account for instance.
+      #
+      # @return [String]
+      attr_accessor :service_account
+
+      # The configuration for additional disks.
+      #
+      # @return [Array<Hash>]
+      attr_accessor :additional_disks
+
+      # (Optional - Override default WinRM setup before for Public Windows images)
+      #
+      # @return [Boolean]
+      attr_accessor :setup_winrm_password
+
+      # Accelerators
+      #
+      # @return [Array<Hash>]
+      attr_accessor :accelerators
 
       def initialize(zone_specific=false)
-        @google_client_email = UNSET_VALUE
-        @google_key_location = UNSET_VALUE
         @google_json_key_location = UNSET_VALUE
         @google_project_id   = UNSET_VALUE
         @image               = UNSET_VALUE
         @image_family        = UNSET_VALUE
+        @image_project_id    = UNSET_VALUE
         @instance_group      = UNSET_VALUE
         @machine_type        = UNSET_VALUE
         @disk_size           = UNSET_VALUE
@@ -170,10 +202,13 @@ module VagrantPlugins
         @metadata            = {}
         @name                = UNSET_VALUE
         @network             = UNSET_VALUE
+        @network_project_id  = UNSET_VALUE
         @subnetwork          = UNSET_VALUE
         @tags                = []
+        @labels              = {}
         @can_ip_forward      = UNSET_VALUE
         @external_ip         = UNSET_VALUE
+        @network_ip          = UNSET_VALUE
         @use_private_ip      = UNSET_VALUE
         @autodelete_disk     = UNSET_VALUE
         @preemptible         = UNSET_VALUE
@@ -181,7 +216,12 @@ module VagrantPlugins
         @on_host_maintenance = UNSET_VALUE
         @instance_ready_timeout = UNSET_VALUE
         @zone                = UNSET_VALUE
+        @scopes              = UNSET_VALUE
         @service_accounts    = UNSET_VALUE
+        @service_account     = UNSET_VALUE
+        @additional_disks    = []
+        @setup_winrm_password = UNSET_VALUE
+        @accelerators        = []
 
         # Internal state (prefix with __ so they aren't automatically
         # merged)
@@ -196,7 +236,7 @@ module VagrantPlugins
       # image and machine type name for zones. Example:
       #
       #     google.zone_config "us-central1-f" do |zone|
-      #       zone.image = "debian-7-wheezy-v20150127"
+      #       zone.image = "ubuntu-1604-xenial-v20180306"
       #       zone.machine_type = "n1-standard-4"
       #     end
       #
@@ -249,28 +289,35 @@ module VagrantPlugins
           # Merge in the metadata
           result.metadata.merge!(self.metadata)
           result.metadata.merge!(other.metadata)
+
+          # Merge in the labels
+          result.labels.merge!(self.labels)
+          result.labels.merge!(other.labels)
+
+          # Merge in the tags
+          result.tags |= self.tags
+          result.tags |= other.tags
+
+          # Merge in the additional disks
+          result.additional_disks |= self.additional_disks
+          result.additional_disks |= other.additional_disks
         end
       end
 
       def finalize! # rubocop:disable Metrics/CyclomaticComplexity, Metrics/PerceivedComplexity
         # Try to get access keys from standard Google environment variables; they
         # will default to nil if the environment variables are not present.
-        @google_client_email = ENV['GOOGLE_CLIENT_EMAIL'] if @google_client_email == UNSET_VALUE
-        @google_key_location = ENV['GOOGLE_KEY_LOCATION'] if @google_key_location == UNSET_VALUE
         @google_json_key_location = ENV['GOOGLE_JSON_KEY_LOCATION'] if @google_json_key_location == UNSET_VALUE
         @google_project_id = ENV['GOOGLE_PROJECT_ID'] if @google_project_id == UNSET_VALUE
 
-        # Image must be nil, since we can't default that
-        if @image == UNSET_VALUE
-          if @image_family == UNSET_VALUE
-            @image = "debian-8-jessie-v20160511"
-          else
-            @image = nil
-          end
-        end
+        # Default image is nil
+        @image = nil if @image == UNSET_VALUE
 
         # Default image family is nil
         @image_family = nil if @image_family == UNSET_VALUE
+
+        # Default image project is nil
+        @image_project_id = nil if @image_project_id == UNSET_VALUE
 
         # Default instance group name is nil
         @instance_group = nil if @instance_group == UNSET_VALUE
@@ -293,14 +340,23 @@ module VagrantPlugins
           t = Time.now
           @name = "i-#{t.strftime("%Y%m%d%H")}-" + SecureRandom.hex(4)
         end
+
         # Network defaults to 'default'
         @network = "default" if @network == UNSET_VALUE
+
+        # Network project id defaults to project_id
+        @network_project_id = @google_project_id if @network_project_id == UNSET_VALUE
 
         # Subnetwork defaults to nil
         @subnetwork = nil if @subnetwork == UNSET_VALUE
 
-        # Default zone is us-central1-f.
-        @zone = "us-central1-f" if @zone == UNSET_VALUE
+        # Default zone is us-central1-f if using the default network
+        if @zone == UNSET_VALUE
+          @zone = nil
+          if @network == "default"
+            @zone = "us-central1-f"
+          end
+        end
 
         # autodelete_disk defaults to true
         @autodelete_disk = true if @autodelete_disk == UNSET_VALUE
@@ -310,6 +366,9 @@ module VagrantPlugins
 
         # external_ip defaults to nil
         @external_ip = nil if @external_ip == UNSET_VALUE
+
+        # network_ip defaults to nil
+        @network_ip = nil if @network_ip == UNSET_VALUE
 
         # use_private_ip defaults to false
         @use_private_ip = false if @use_private_ip == UNSET_VALUE
@@ -326,8 +385,22 @@ module VagrantPlugins
         # Default instance_ready_timeout
         @instance_ready_timeout = 20 if @instance_ready_timeout == UNSET_VALUE
 
-        # Default service_accounts
+        # Default access scopes
+        @scopes = nil if @scopes == UNSET_VALUE
+
+        # Default access scopes
         @service_accounts = nil if @service_accounts == UNSET_VALUE
+
+        # Default IAM service account
+        @service_account = nil if @service_account == UNSET_VALUE
+
+        # Default Setup WinRM Password
+        @setup_winrm_password = nil if @setup_winrm_password == UNSET_VALUE
+
+        # Config option service_accounts is deprecated
+        if @service_accounts
+          @scopes = @service_accounts
+        end
 
         # Compile our zone specific configurations only within
         # NON-zone-SPECIFIC configurations.
@@ -362,17 +435,15 @@ module VagrantPlugins
         if @zone
           config = get_zone_config(@zone)
 
+          # TODO: Check why provider-level settings are validated in the zone config
           errors << I18n.t("vagrant_google.config.google_project_id_required") if \
             config.google_project_id.nil?
-          errors << I18n.t("vagrant_google.config.google_client_email_required") if \
-            config.google_client_email.nil?
-          errors << I18n.t("vagrant_google.config.google_duplicate_key_location") if \
-            !config.google_key_location.nil? and !config.google_json_key_location.nil?
-          errors << I18n.t("vagrant_google.config.google_key_location_required") if \
-            config.google_key_location.nil? and config.google_json_key_location.nil?
-          errors << I18n.t("vagrant_google.config.private_key_missing") unless \
-            File.exist?(config.google_key_location.to_s) or \
-            File.exist?(config.google_json_key_location.to_s)
+
+          if config.google_json_key_location
+            errors << I18n.t("vagrant_google.config.private_key_missing") unless \
+              File.exist?(File.expand_path(config.google_json_key_location.to_s)) or
+              File.exist?(File.expand_path(config.google_json_key_location.to_s, machine.env.root_path))
+          end
 
           if config.preemptible
             errors << I18n.t("vagrant_google.config.auto_restart_invalid_on_preemptible") if \
@@ -385,10 +456,19 @@ module VagrantPlugins
             errors << I18n.t("vagrant_google.config.image_and_image_family_set") if \
              config.image
           end
+
+          errors << I18n.t("vagrant_google.config.image_required") if config.image.nil? && config.image_family.nil?
+          errors << I18n.t("vagrant_google.config.name_required") if @name.nil?
+
+          if !config.accelerators.empty?
+            errors << I18n.t("vagrant_google.config.on_host_maintenance_invalid_with_accelerators") unless \
+              config.on_host_maintenance == "TERMINATE"
+          end
         end
 
-        errors << I18n.t("vagrant_google.config.image_required") if config.image.nil? && config.image_family.nil?
-        errors << I18n.t("vagrant_google.config.name_required") if @name.nil?
+        if @service_accounts
+          machine.env.ui.warn(I18n.t("vagrant_google.config.service_accounts_deprecaated"))
+        end
 
         { "Google Provider" => errors }
       end

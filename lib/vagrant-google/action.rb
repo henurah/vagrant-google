@@ -66,7 +66,7 @@ module VagrantPlugins
             end
 
             b2.use Provision
-            b2.use SyncFolders
+            b2.use SyncedFolders
           end
         end
       end
@@ -79,6 +79,15 @@ module VagrantPlugins
           b.use ConfigValidate
           b.use ConnectGoogle
           b.use ReadSSHInfo
+        end
+      end
+
+      # This action is called to setup the Windows user/password on the machine.
+      def self.action_setup_winrm_password
+        Vagrant::Action::Builder.new.tap do |b|
+          b.use ConfigValidate
+          b.use ConnectGoogle
+          b.use SetupWinrmPassword
         end
       end
 
@@ -134,7 +143,7 @@ module VagrantPlugins
               b1.use Call, IsTerminated do |env2, b2|
                 if env2[:result]
                   b2.use Provision
-                  b2.use SyncFolders
+                  b2.use SyncedFolders
                   b2.use WarnNetworks
                   b2.use WarnSshKeys
                   b2.use StartInstance
@@ -145,7 +154,7 @@ module VagrantPlugins
               end
             else
               b1.use Provision
-              b1.use SyncFolders
+              b1.use SyncedFolders
               b1.use WarnNetworks
               b1.use WarnSshKeys
               b1.use RunInstance
@@ -182,11 +191,11 @@ module VagrantPlugins
       autoload :MessageNotCreated, action_root.join("message_not_created")
       autoload :MessageWillNotDestroy, action_root.join("message_will_not_destroy")
       autoload :ReadSSHInfo, action_root.join("read_ssh_info")
+      autoload :SetupWinrmPassword, action_root.join('setup_winrm_password')
       autoload :ReadState, action_root.join("read_state")
       autoload :RunInstance, action_root.join("run_instance")
       autoload :StartInstance, action_root.join("start_instance")
       autoload :StopInstance, action_root.join("stop_instance")
-      autoload :SyncFolders, action_root.join("sync_folders")
       autoload :TerminateInstance, action_root.join("terminate_instance")
       autoload :TimedProvision, action_root.join("timed_provision")
       autoload :WarnNetworks, action_root.join("warn_networks")

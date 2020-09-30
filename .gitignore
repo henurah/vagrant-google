@@ -9,6 +9,7 @@ pkg/*
 tags
 Gemfile.lock
 /vagrant-google/*
+vendor/*
 
 # Vagrant
 .vagrant
@@ -16,3 +17,6 @@ Gemfile.lock
 
 # Intellij projects folder
 .idea
+
+# Env
+setenv_*.sh

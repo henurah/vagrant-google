@@ -31,7 +31,9 @@ describe VagrantPlugins::Google::Config do
     end
 
     its("name")                   { should match "i-[0-9]{10}-[0-9a-f]{4}" }
-    its("image")                  { should == "debian-8-jessie-v20160511" }
+    its("image")                  { should be_nil }
+    its("image_family")           { should be_nil }
+    its("image_project_id")       { should be_nil }
     its("instance_group")         { should be_nil }
     its("zone")                   { should == "us-central1-f" }
     its("network")                { should == "default" }
@@ -42,10 +44,13 @@ describe VagrantPlugins::Google::Config do
     its("instance_ready_timeout") { should == 20 }
     its("metadata")               { should == {} }
     its("tags")                   { should == [] }
-    its("service_accounts")       { should == nil }
+    its("labels")                 { should == {} }
+    its("scopes")                 { should == nil }
+    its("additional_disks")       { should == [] }
     its("preemptible")            { should be_falsey }
     its("auto_restart")           { should }
     its("on_host_maintenance")    { should == "MIGRATE" }
+    its("accelerators")           { should == [] }
   end
 
   describe "overriding defaults" do
@@ -53,14 +58,21 @@ describe VagrantPlugins::Google::Config do
     # simple boilerplate test, so I cut corners here. It just sets
     # each of these attributes to "foo" in isolation, and reads the value
     # and asserts the proper result comes back out.
-    [:name, :image, :zone, :instance_ready_timeout, :machine_type, :disk_size, :disk_name, :disk_type,
-     :network, :metadata, :can_ip_forward, :external_ip, :autodelete_disk].each do |attribute|
+    [:name, :image, :image_family, :image_project_id, :zone, :instance_ready_timeout, :machine_type, :disk_size, :disk_name, :disk_type,
+     :network, :network_project_id, :metadata, :labels, :can_ip_forward, :external_ip, :autodelete_disk].each do |attribute|
 
       it "should not default #{attribute} if overridden" do
         instance.send("#{attribute}=".to_sym, "foo")
         instance.finalize!
         expect(instance.send(attribute)).to eq "foo"
       end
+    end
+
+    it "should raise error when network is not default and zone is not overriden" do
+      instance.network = "not-default"
+      instance.finalize!
+      errors = instance.validate("foo")["Google Provider"]
+      expect(errors).to include(/zone_required/)
     end
 
     it "should raise error when preemptible and auto_restart is true" do
@@ -78,6 +90,14 @@ describe VagrantPlugins::Google::Config do
       errors = instance.validate("foo")["Google Provider"]
       expect(errors).to include(/on_host_maintenance_invalid_on_preemptible/)
     end
+
+    it "should raise error with accelerators and on_host_maintenance is not TERMINATE" do
+      instance.accelerators = [{ :type => "nvidia-tesla-k80" }]
+      instance.on_host_maintenance = "MIGRATE"
+      instance.finalize!
+      errors = instance.validate("foo")["Google Provider"]
+      expect(errors).to include(/on_host_maintenance_invalid_with_accelerators/)
+    end
   end
 
   describe "getting credentials from environment" do
@@ -88,15 +108,11 @@ describe VagrantPlugins::Google::Config do
         end
       end
 
-      its("google_client_email") { should be_nil }
-      its("google_key_location") { should be_nil }
       its("google_json_key_location") { should be_nil }
     end
 
     context "with Google credential environment variables" do
       before :each do
-        allow(ENV).to receive(:[]).with("GOOGLE_CLIENT_EMAIL").and_return("client_id_email")
-        allow(ENV).to receive(:[]).with("GOOGLE_KEY_LOCATION").and_return("/path/to/key")
         allow(ENV).to receive(:[]).with("GOOGLE_JSON_KEY_LOCATION").and_return("/path/to/json/key")
       end
 
@@ -106,33 +122,7 @@ describe VagrantPlugins::Google::Config do
         end
       end
 
-      its("google_client_email") { should == "client_id_email" }
-      its("google_key_location") { should == "/path/to/key" }
       its("google_json_key_location") { should == "/path/to/json/key" }
-    end
-
-    context "With both Google credential environment variables" do
-      before :each do
-        allow(ENV).to receive(:[]).with("GOOGLE_CLIENT_EMAIL").and_return("client_id_email")
-        allow(ENV).to receive(:[]).with("GOOGLE_KEY_LOCATION").and_return("/path/to/key")
-        allow(ENV).to receive(:[]).with("GOOGLE_JSON_KEY_LOCATION").and_return("/path/to/json/key")
-      end
-
-      it "Should return duplicate key location errors" do
-        instance.finalize!
-        expect(instance.validate("foo")["Google Provider"][1]).to include("en.vagrant_google.config.google_duplicate_key_location")
-      end
-    end
-
-    context "With none of the Google credential environment variables set" do
-      before :each do
-        allow(ENV).to receive(:[]).with("GOOGLE_CLIENT_EMAIL").and_return("client_id_email")
-      end
-
-      it "Should return no key set errors" do
-        instance.finalize!
-        expect(instance.validate("foo")["Google Provider"][1]).to include("en.vagrant_google.config.google_key_location_required")
-      end
     end
   end
 
@@ -147,6 +137,7 @@ describe VagrantPlugins::Google::Config do
     let(:config_network)         { "foo" }
     let(:can_ip_forward)         { true }
     let(:external_ip)            { "foo" }
+    let(:accelerators)           { [{ :type => "foo" }] }
 
     def set_test_values(instance)
       instance.name              = config_name
@@ -159,6 +150,7 @@ describe VagrantPlugins::Google::Config do
       instance.zone              = config_zone
       instance.can_ip_forward    = can_ip_forward
       instance.external_ip       = external_ip
+      instance.accelerators      = accelerators
     end
 
     it "should raise an exception if not finalized" do
@@ -188,6 +180,7 @@ describe VagrantPlugins::Google::Config do
       its("zone")              { should == config_zone }
       its("can_ip_forward")    { should == can_ip_forward }
       its("external_ip")       { should == external_ip }
+      its("accelerators")      { should == accelerators }
     end
 
     context "with a specific config set" do
@@ -216,6 +209,7 @@ describe VagrantPlugins::Google::Config do
       its("zone")              { should == zone_name }
       its("can_ip_forward")    { should == can_ip_forward }
       its("external_ip")       { should == external_ip }
+      its("accelerators")      { should == accelerators }
     end
 
     describe "inheritance of parent config" do
@@ -263,6 +257,37 @@ describe VagrantPlugins::Google::Config do
           "two" => "bar"
         })
       end
+
+      it "should merge the labels" do
+        first.labels["one"] = "one"
+        second.labels["two"] = "two"
+
+        third = first.merge(second)
+        expect(third.labels).to eq({
+          "one" => "one",
+          "two" => "two"
+        })
+      end
+
+      it "should merge the tags" do
+        first.tags = ["foo", "bar"]
+        second.tags = ["biz"]
+
+        third = first.merge(second)
+        expect(third.tags).to include("foo")
+        expect(third.tags).to include("bar")
+        expect(third.tags).to include("biz")
+      end
+
+      it "should merge the additional_disks" do
+        first.additional_disks = [{:one => "one"}]
+        second.additional_disks = [{:two => "two"}]
+
+        third = first.merge(second)
+        expect(third.additional_disks).to contain_exactly(
+          {:one => "one"}, {:two => "two"}
+        )
+      end
     end
 
     describe "zone_preemptible" do
@@ -282,18 +307,20 @@ describe VagrantPlugins::Google::Config do
 
       before :each do
         # Stub out required env to make sure we produce only errors we're looking for.
-        allow(ENV).to receive(:[]).with("GOOGLE_CLIENT_EMAIL").and_return("client_id_email")
         allow(ENV).to receive(:[]).with("GOOGLE_PROJECT_ID").and_return("my-awesome-project")
         allow(ENV).to receive(:[]).with("GOOGLE_JSON_KEY_LOCATION").and_return("/path/to/json/key")
         allow(ENV).to receive(:[]).with("GOOGLE_SSH_KEY_LOCATION").and_return("/path/to/ssh/key")
+        allow(File).to receive(:exist?).with("/path/to/json/key").and_return(true)
       end
 
       it "should fail auto_restart validation" do
+        instance.finalize!
         errors = subject.validate("foo")["Google Provider"]
         expect(errors).to include(/auto_restart_invalid_on_preemptible/)
       end
 
       it "should fail on_host_maintenance validation" do
+        instance.finalize!
         errors = subject.validate("foo")["Google Provider"]
         expect(errors).to include(/on_host_maintenance_invalid_on_preemptible/)
       end

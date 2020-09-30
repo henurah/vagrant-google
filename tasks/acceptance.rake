@@ -29,16 +29,12 @@ namespace :acceptance do
   task :check_env do
     yellow "NOTE: For acceptance tests to be functional, correct ssh key needs to be added to GCE metadata."
 
-    if !ENV["GOOGLE_JSON_KEY_LOCATION"] && !ENV["GOOGLE_KEY_LOCATION"]
-      abort "Environment variables GOOGLE_JSON_KEY_LOCATION or GOOGLE_KEY_LOCATION are not set. Aborting."
+    unless ENV["GOOGLE_JSON_KEY_LOCATION"]
+      abort "Environment variables GOOGLE_JSON_KEY_LOCATION is not set. Aborting."
     end
 
     unless ENV["GOOGLE_PROJECT_ID"]
       abort "Environment variable GOOGLE_PROJECT_ID is not set. Aborting."
-    end
-
-    unless ENV["GOOGLE_CLIENT_EMAIL"]
-      abort "Environment variable GOOGLE_CLIENT_EMAIL is not set. Aborting."
     end
 
     unless ENV["GOOGLE_SSH_USER"]
@@ -54,6 +50,9 @@ namespace :acceptance do
         end
       end
     end
+
+    # Set vagrant env to avoid "Encoded files can't be read" error.
+    ENV["VAGRANT_INSTALLER_EMBEDDED_DIR"] = File.expand_path("../../", __FILE__)
   end
 
   task :run_full do
@@ -64,8 +63,9 @@ namespace :acceptance do
       reload
       scopes
       instance_groups
+      image_family
+      synced_folder/rsync
       provisioner/shell
-      provisioner/chef-solo
     ).map{ |s| "provider/google/#{s}" }
 
     command = "vagrant-spec test --components=#{components.join(" ")}"

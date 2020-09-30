@@ -14,8 +14,8 @@ en:
       Instance is not created. Please run `vagrant up` first.
     ready: |-
       Machine is booted and ready for use!
-    ready_ssh: |-
-      Machine is ready for SSH access!
+    ready_comm: |-
+      Machine is ready for Communicator access!
     rsync_not_found_warning: |-
       Warning! Folder sync disabled because the rsync binary is missing.
       Make sure rsync is installed and the binary can be found in the PATH.
@@ -31,8 +31,8 @@ en:
       Waiting for GCP operation '%{name}' to finish...
     waiting_for_ready: |-
       Waiting for instance to become "ready"...
-    waiting_for_ssh: |-
-      Waiting for SSH to become available...
+    waiting_for_comm: |-
+      Waiting for Communicator to become available...
     warn_networks: |-
       Warning! The Google provider doesn't support any of the Vagrant
       high-level network configurations (`config.vm.network`). They
@@ -52,9 +52,6 @@ en:
 # Translations for config validation errors
 #-------------------------------------------------------------------------------
     config:
-      google_client_email_required: |-
-        A Google Service Account client email is required via
-        "google_client_email".
       private_key_missing: |-
         Private key for Google could not be found in the specified location.
       zone_required: |-
@@ -62,15 +59,7 @@ en:
       name_required: |-
         An instance name must be specified via "name" option.
       image_required: |-
-        An image must be specified via "image" option.
-      google_key_location_required: |-
-        A private key pathname is required via:
-         "google_json_key_location" (for JSON keys)
-         or
-         "google_key_location" (for P12 keys)
-      google_duplicate_key_location: |-
-        Both "google_json_key_location" and "google_key_location" are specified.
-        Config must specify only one key location.
+        An image must be specified via "image" or "image_family" option.
       google_project_id_required: |-
         A Google Cloud Project ID is required via "google_project_id".
       auto_restart_invalid_on_preemptible: |-
@@ -80,6 +69,11 @@ en:
         instances.
       image_and_image_family_set: |-
         "image" must be unset when setting "image_family"
+      service_accounts_deprecaated: |-
+        "service_accounts is deprecated. Please use scopes instead"
+      on_host_maintenance_invalid_with_accelerators: |-
+        "on_host_maintenance" option must be set to "TERMINATE" for instances
+        with accelerators
 #-------------------------------------------------------------------------------
 # Translations for exception classes
 #-------------------------------------------------------------------------------

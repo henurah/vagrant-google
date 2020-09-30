@@ -1,7 +1,5 @@
-# This tests that account scopes can be configured correctly
-# and that gcloud GCE aliases can be used.
-# (see lib/fog/google/models/compute/server.rb in fog-google)
-shared_examples 'provider/scopes' do |provider, options|
+# This tests that an instance referenced by image family can be started properly
+shared_examples 'provider/image_family' do |provider, options|
   unless options[:box]
     raise ArgumentError,
           "box option must be specified for provider: #{provider}"
@@ -10,7 +8,7 @@ shared_examples 'provider/scopes' do |provider, options|
   include_context 'acceptance'
 
   before do
-    environment.skeleton('scopes')
+    environment.skeleton('image_family')
     assert_execute('vagrant', 'box', 'add', 'basic', options[:box])
     assert_execute('vagrant', 'up', "--provider=#{provider}")
   end
@@ -19,7 +17,7 @@ shared_examples 'provider/scopes' do |provider, options|
     assert_execute('vagrant', 'destroy', '--force')
   end
 
-  it 'should bring up machine with scope definitions' do
+  it 'should bring up machine with image_family option' do
     status("Test: machine is running after up")
     result = execute("vagrant", "ssh", "-c", "echo foo")
     expect(result).to exit_with(0)

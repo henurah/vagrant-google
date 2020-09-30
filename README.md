@@ -1,13 +1,11 @@
 # Vagrant Google Compute Engine (GCE) Provider
 
-
-[![Gem Version](https://badge.fury.io/rb/vagrant-google.png)][gem]
-[![Dependency Status](https://gemnasium.com/mitchellh/vagrant-google.png)][gemnasium]
+[![Gem Version](https://badge.fury.io/rb/vagrant-google.svg)](https://badge.fury.io/rb/vagrant-google)
 
 [gem]: https://rubygems.org/gems/vagrant-google
 [gemnasium]: https://gemnasium.com/mitchellh/vagrant-google
 
-This is a [Vagrant](http://www.vagrantup.com) 1.2+ plugin that adds an
+This is a [Vagrant](http://www.vagrantup.com) 2.0.3+ plugin that adds an
 [Google Compute Engine](http://cloud.google.com/compute/) (GCE) provider to
 Vagrant, allowing Vagrant to control and provision instances in GCE.
 
@@ -18,7 +16,8 @@ The maintainers for this plugin are @temikus(primary), @erjohnso(backup).
 * Boot Google Compute Engine instances.
 * SSH into the instances.
 * Provision the instances with any built-in Vagrant provisioner.
-* Minimal synced folder support via `rsync`.
+* Synced folder support via Vagrant's 
+[rsync action](https://www.vagrantup.com/docs/synced-folders/rsync.html).
 * Define zone-specific configurations so Vagrant can manage machines in
   multiple zones.
 
@@ -86,9 +85,10 @@ Vagrant.configure("2") do |config|
 
   config.vm.provider :google do |google, override|
     google.google_project_id = "YOUR_GOOGLE_CLOUD_PROJECT_ID"
-    google.google_client_email = "YOUR_SERVICE_ACCOUNT_EMAIL_ADDRESS"
     google.google_json_key_location = "/path/to/your/private-key.json"
-
+    
+    google.image_family = 'ubuntu-1604-lts'
+    
     override.ssh.username = "USERNAME"
     override.ssh.private_key_path = "~/.ssh/id_rsa"
     #override.ssh.private_key_path = "~/.ssh/google_compute_engine"
@@ -99,10 +99,11 @@ end
 
 And then run `vagrant up --provider=google`.
 
-This will start a Debian 8 (Jessie) instance in the `us-central1-f` zone,
-with an `n1-standard-1` machine, and the `"default"` network within your
-project. And assuming your SSH information (see below) was filled in properly
-within your Vagrantfile, SSH and provisioning will work as well.
+This will start a latest version of Ubuntu 16.04 LTS instance in the 
+`us-central1-f` zone, with an `n1-standard-1` machine, and the `"default"` 
+network within your project. And assuming your SSH information (see below) was 
+filled in properly within your Vagrantfile, SSH and provisioning will work as 
+well.
 
 Note that normally a lot of this boilerplate is encoded within the box file,
 but the box file used for the quick start, the "google" box, has no
@@ -163,17 +164,16 @@ configuration for this provider.
 
 This provider exposes quite a few provider-specific configuration options:
 
-* `google_client_email` - The Client Email address for your Service Account.  
-  (Can also be configured with `GOOGLE_CLIENT_EMAIL` environment variable.)
-* `google_key_location` - The location of the P12 private key file matching your
-  Service Account.  
-  (Can also be configured with `GOOGLE_KEY_LOCATION` environment variable.)
 * `google_json_key_location` - The location of the JSON private key file matching your
   Service Account.  
   (Can also be configured with `GOOGLE_JSON_KEY_LOCATION` environment variable.)
 * `google_project_id` - The Project ID for your Google Cloud Platform account.  
   (Can also be configured with `GOOGLE_PROJECT_ID` environment variable.)
 * `image` - The image name to use when booting your instance.
+* `image_family` - Specify an "image family" to pull the latest image from. For example: `centos-7` 
+will pull the most recent CentOS 7 image. For more info, refer to 
+[Google Image documentation](https://cloud.google.com/compute/docs/images#image_families).
+* `image_project_id` - The ID of the GCP project to search for the `image` or `image_family`.
 * `instance_group` - Unmanaged instance group to add the machine to. If one
   doesn't exist it will be created.
 * `instance_ready_timeout` - The number of seconds to wait for the instance
@@ -182,25 +182,57 @@ This provider exposes quite a few provider-specific configuration options:
 * `disk_size` - The disk size in GB.  The default is 10.
 * `disk_name` - The disk name to use.  If the disk exists, it will be reused, otherwise created.
 * `disk_type` - Whether to use Standard disk or SSD disk. Use either `pd-ssd` or `pd-standard`.
+* `autodelete_disk` - Boolean whether to delete the disk when the instance is deleted or not. Default is true.
 * `metadata` - Custom key/value pairs of metadata to add to the instance.
 * `name` - The name of your instance.  The default is "i-yyyymmddhh-randomsd",
   e.g. 10/08/2015 13:15:15 is "i-2015081013-15637fda".
 * `network` - The name of the network to use for the instance.  Default is
  "default".
+* `network_project_id` - The ID of the GCP project for the network and subnetwork to use for the instance. Default is `google_project_id`.
 * `subnetwork` - The name of the subnetwork to use for the instance.
 * `tags` - An array of tags to apply to this instance.
+* `labels` - Custom key/value pairs of labels to add to the instance.
 * `zone` - The zone name where the instance will be created.
 * `can_ip_forward` - Boolean whether to enable IP Forwarding.
 * `external_ip` - The external IP address to use (supports names). Set to `false` to not assign an external address.
+* `network_ip` - The internal IP address to use. Default is to use next available address.
 * `use_private_ip` - Boolean whether to use private IP for SSH/provisioning. Default is false.
 * `preemptible` - Boolean whether to enable preemptibility. Default is false.
 * `auto_restart` - Boolean whether to enable auto_restart. Default is true.
-* `on_host_maintenance` - What to do on host maintenance. Default is "MIGRATE".
-* `service_accounts` or `scopes` - An array of OAuth2 account scopes for
+* `on_host_maintenance` - What to do on host maintenance. Can be set to `MIGRATE` or `TERMINATE` Default is `MIGRATE`.
+* `scopes` or `service_accounts` - An array of OAuth2 account scopes for
   services that the instance will have access to. Those can be both full API
   scopes, just endpoint aliases (the part after `...auth/`), and `gcloud`
   utility aliases, for example:
   `['storage-full', 'bigquery', 'https://www.googleapis.com/auth/compute']`.
+* `service_account` - The IAM service account email to use for the instance.
+* `additional_disks` - An array of additional disk configurations. `disk_size` is default to `10`GB; 
+  `disk_name` is default to `name` + "-additional-disk-#{index}"; `disk_type` is default to `pd-standard`; 
+  `autodelete_disk` is default to `true`. Here is an example of configuration.
+  ```ruby
+    [{
+     :image_family => "google-image-family",
+     :image => nil,
+     :image_project_id => "google-project-id",
+     :disk_size => 20,
+     :disk_name => "google-additional-disk-0",
+     :disk_type => "pd-standard",
+     :autodelete_disk => true
+    }]
+  ```
+* `accelerators` - An array of accelerator configurations. `type` is the
+  accelerator type (e.g. `nvidia-tesla-k80`); `count` is the number of
+  accelerators and defaults to 1. Note that only `TERMINATE` is supported for
+  `on_host_maintenance`; this should be set explicitly, since the default is
+  `MIGRATE`.
+  ```ruby
+  google.accelerators = [{
+    :type => "nvidia-tesla-k80",
+    :count => 2
+  }]
+
+  google.on_host_maintenance = "TERMINATE"
+  ```
 
 These can be set like typical provider-specific configuration:
 
@@ -210,7 +242,6 @@ Vagrant.configure("2") do |config|
 
   config.vm.provider :google do |google|
     google.google_project_id = "YOUR_GOOGLE_CLOUD_PROJECT_ID"
-    google.google_client_email = "YOUR_SERVICE_ACCOUNT_EMAIL_ADDRESS"
     google.google_json_key_location = "/path/to/your/private-key.json"
   end
 end
@@ -228,7 +259,6 @@ Vagrant.configure("2") do |config|
 
   config.vm.provider :google do |google|
     google.google_project_id = "YOUR_GOOGLE_CLOUD_PROJECT_ID"
-    google.google_client_email = "YOUR_SERVICE_ACCOUNT_EMAIL_ADDRESS"
     google.google_json_key_location = "/path/to/your/private-key.json"
 
     # Make sure to set this to trigger the zone_config
@@ -236,7 +266,7 @@ Vagrant.configure("2") do |config|
 
     google.zone_config "us-central1-f" do |zone1f|
         zone1f.name = "testing-vagrant"
-        zone1f.image = "debian-8-jessie-v20160923"
+        zone1f.image = "debian-9-stretch-v20180611"
         zone1f.machine_type = "n1-standard-4"
         zone1f.zone = "us-central1-f"
         zone1f.metadata = {'custom' => 'metadata', 'testing' => 'foobarbaz'}
@@ -262,13 +292,9 @@ emit a warning, but will otherwise boot the GCE machine.
 
 ## Synced Folders
 
-There is minimal support for synced folders. Upon `vagrant up`,
-`vagrant reload`, and `vagrant provision`, the Google provider will use
-`rsync` (if available) to uni-directionally sync the folder to the remote
-machine over SSH.
-
-This is good enough for all built-in Vagrant provisioners (`shell`, `chef`, and
-`puppet`) to work!
+Since plugin version 2.0, this is implemented via built-in `SyncedFolders` action.
+See Vagrant's [rsync action](https://www.vagrantup.com/docs/synced-folders/rsync.html) 
+documentation for more info.
 
 ## Development
 
@@ -303,7 +329,6 @@ Before you start acceptance tests, you'll need to set the authentication
 shell variables accordingly:
 
 ```sh
-export GOOGLE_CLIENT_EMAIL="your-google_service_account_email@developer.gserviceaccount.com"
 export GOOGLE_PROJECT_ID="your-google-cloud-project-id"
 export GOOGLE_JSON_KEY_LOCATION="/full/path/to/your/private-key.json"
 
